@@ -10,3 +10,12 @@ dialog{color-scheme:light;overscroll-behavior:contain}
 @media(max-height:620px){.hero-copy{top:19%}.hero h1{font-size:clamp(46px,14svh,84px);margin-bottom:16px}.hero-copy .eyebrow{margin-bottom:15px}.hero-description{font-size:10px}.hero-actions{margin-top:16px}.hero-bottom{left:auto;right:6%;bottom:28px}.hero-bottom>span:first-child,.hero-bottom .edition,.horizon-note{display:none}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation-duration:.001ms!important;transition-duration:.001ms!important}.reveal{opacity:1;transform:none}.experience-controls{opacity:1;transform:none}}
 
+/* The underwater title follows the reference's quiet, navy editorial layout. */
+.deep-message{top:23%;left:8.5%;color:#082b43;pointer-events:auto;transform:translateY(calc((1 - var(--dive))*10px))}
+.deep-message .eyebrow{font-size:9px;letter-spacing:2.2px;margin:0 0 20px}
+.deep-message h2{font:400 clamp(70px,7.7vw,122px)/.91 var(--serif);letter-spacing:-.055em;margin:0 0 18px}
+.deep-message .underwater-description{font-size:13px;line-height:1.8;margin:0 0 21px;letter-spacing:.3px}
+.deep-message .button{padding:10px 22px;font-size:11px}
+.scene-shade{opacity:calc(1 - var(--dive)*.5)}
+@media(max-width:680px){.deep-message{top:23%;left:8%;right:8%;color:#e1f1f2;text-shadow:0 1px 12px #032b4e55}.deep-message .eyebrow{font-size:7px;letter-spacing:1.5px}.deep-message h2{font-size:clamp(62px,14vw,85px)}.deep-message .underwater-description{font-size:11px}.deep-message .button{text-shadow:none}}
+@media(max-height:620px){.deep-message{top:20%}.deep-message h2{font-size:clamp(42px,12svh,76px)}.deep-message .eyebrow{margin-bottom:12px}.deep-message .underwater-description{font-size:10px;margin-bottom:12px}}

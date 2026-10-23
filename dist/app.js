@@ -29,6 +29,7 @@ function syncScroll() {
   heroCopy.inert = heroHidden;
   heroCopy.style.visibility = heroHidden ? 'hidden' : 'visible';
   deepMessage.setAttribute('aria-hidden', String(currentProgress <= .62));
+  deepMessage.inert = currentProgress <= .78;
 }
 addEventListener('scroll', () => { if (!framePending) { framePending = true; requestAnimationFrame(syncScroll); } }, {passive:true});
 addEventListener('resize', syncScroll, {passive:true});

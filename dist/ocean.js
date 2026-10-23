@@ -193,20 +193,26 @@ vec3 aboveWater(vec2 uv, float progress) {
 
 vec3 underwaterPhotograph(vec2 st, float progress) {
   float depth = smoothstep(.20, 1., progress);
-  float upper = smoothstep(.16, .93, st.y);
-  vec2 coordinates = (st - .5) / mix(1.055, 1., depth) + .5;
-  coordinates.y += (1. - depth) * .025;
-  // Broad surface swells and small irregular refraction both travel over time.
+  float upper = smoothstep(.30, .88, st.y);
+  vec2 coordinates = (st - .5) / mix(1.012, 1., depth) + .5;
+  coordinates.y += (1. - depth) * .008;
+  // Preserve the reference camera and ripple scale, with only a few pixels
+  // of refraction near the surface instead of stretching whole wave ridges.
   vec2 swell = vec2(sin(st.y * 11. + uTime * .43) + sin(st.x * 9. - uTime * .31) * .45,
                     cos(st.x * 13. + uTime * .36) + sin(st.y * 17. - uTime * .27) * .4);
-  coordinates += swell * vec2(.0026, .0037) * upper;
-  coordinates += waterDetail(st * vec2(28., 19.) + vec2(uTime * .16, 0.), 0.) * .022 * upper;
-  coordinates += uPointer * vec2(.004, .003) * upper;
+  coordinates += swell * vec2(1.8, 2.3) / uResolution * upper;
+  coordinates += waterDetail(st * vec2(28., 19.) + vec2(uTime * .10, 0.), 0.) * .007 * upper;
+  coordinates += uPointer * vec2(.0015, .0010) * upper;
+  // Cover-fit the 16:9 photograph without squeezing its waves on tall screens.
+  float viewportAspect = uResolution.x / uResolution.y;
+  float photoAspect = 1672. / 941.;
+  vec2 crop = vec2(min(1., viewportAspect / photoAspect), min(1., photoAspect / viewportAspect));
+  float horizontalFocus = mix(.70, .5, smoothstep(.65, 1.30, viewportAspect));
+  coordinates = (coordinates - .5) * crop + vec2(horizontalFocus, .5);
   vec3 photo = texture2D(uUnderTexture, clamp(coordinates, .003, .997)).rgb;
   vec3 color = inverseFilmic(pow(photo, vec3(2.2)));
-  color *= mix(vec3(1.), vec3(.94, .985, 1.), depth);
-  float sunlight = exp(-pow((st.x - .79) * 4., 2.) - pow((st.y - .85) * 3.5, 2.));
-  color *= 1. + sunlight * (.026 * sin(uTime * .47) + .018 * sin(uTime * .81 + st.y * 7.));
+  float sunlight = exp(-pow((coordinates.x - .80) * 4., 2.) - pow((coordinates.y - .75) * 3.5, 2.));
+  color *= 1. + sunlight * (.012 * sin(uTime * .47) + .008 * sin(uTime * .81 + st.y * 7.));
 
   // Tiny air bubbles rise at different speeds. The offset rim highlight and
   // faint core distinguish them from opaque white dots or a particle overlay.
@@ -226,7 +232,7 @@ vec3 underwaterPhotograph(vec2 st, float progress) {
     float rim = exp(-pow((d - radius) / softness, 2.));
     float highlight = exp(-dot(delta - vec2(-radius * .34, radius * .40),
                                delta - vec2(-radius * .34, radius * .40)) / (.20 + radius * .22));
-    float visible = step(.88, seed) * (.16 + .12 * sin(seed * 12. + uTime * .7));
+    float visible = step(.92, seed) * (.10 + .06 * sin(seed * 12. + uTime * .7));
     color += vec3(.25, .53, .61) * (rim * .24 + highlight * .62) * visible;
   }
   return color;
@@ -462,7 +468,7 @@ export class OceanScene {
       this.canvas.dataset.oceanUnderwater = 'photographic';
       this.requestFrame();
     };
-    underImage.src = new URL('./assets/underwater-light.png', import.meta.url).href;
+    underImage.src = new URL('./assets/underwater-reference-v2.png', import.meta.url).href;
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
   }

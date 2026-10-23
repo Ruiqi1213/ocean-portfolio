@@ -1,5 +1,20 @@
 # Ocean background assets
 
+
+## Reference-derived underwater edit (v2)
+
+- Asset: `dist/assets/underwater-reference-v2.png` (1672 × 941 pixels, 2,001,773 bytes).
+- Edited with the built-in image generation tool on 2026-10-24 from the exact user-supplied screenshot, instead of generating a new scene.
+- Edit source: `D:/微信/聊天记录/xwechat_files/wxid_n61vx1wq01iv22_2579/temp/RWTemp/2026-10/9e20f478899dc29eb19741386f9343c8/637851cd7e9669ab179ef7e4d11a5e92.jpg`.
+- Original generated edit file: `C:/Users/Administrator/.codex/generated_images/01a1698b-edab-7b22-adcd-6e539b6fa018/exec-5eb58d26-4dcd-494c-83aa-f1b97a6c526c.png`.
+- Provenance: derivative cleanup of the user-provided website screenshot; this asset is not claimed to be an independently generated original or licensed third-party stock image.
+- Inspected result: black side bars and website UI removed; fine flat ripples, muted cyan/teal palette, distributed upper-right gold-white patches, broad rays and dark navy lower water closely follow the reference. Small hazy particles from the source are retained.
+
+### Final reference edit prompt
+
+Use case: precise-object-edit. The supplied image is the EDIT TARGET, not merely inspiration. Perform a faithful cleanup of this exact underwater photograph. Crop off ONLY the solid black left and right letterboxing: the real underwater content begins near x=184 and ends near x=1624 in the 1808 by 810 source, making a landscape 16:9 ocean image. Make that existing underwater photograph fill the entire output edge to edge. Remove every website overlay and restore the underlying occluded underwater pixels with seamless local inpainting: top thin announcement and arrow, top-left wave icon and OCEAN logo, all navigation and top-right pill button; left small all-caps kicker, huge 'Closer to the ocean.' title, both subtitle lines, the dark 'Explore the ocean' button, circular play button and 'Watch the film'; lower-left circular pause control and LIVE AT SEA, lower-right SCROLL TO EXPLORE and arrow. No text, logos, controls, icons, borders, or UI must remain. CRITICAL INVARIANTS: preserve the exact natural underwater scene, camera angle, perspective, light distribution, palette, softness, detail level, contrast and all unobscured underwater areas as closely as possible. Preserve the fine, relatively flat, irregular broken pale cyan/silver ripples across the upper half, not large close-up swells. Preserve the muted teal-blue palette with soft cyan illumination on the left. Preserve the original several distributed gold-white sunlit patches across the upper-right, not one huge glaring sun at the corner. Preserve broad soft diffuse rays descending into hazy open water and the smooth dark navy lower third. Preserve the few subtle tiny hazy suspended particles visible in the original. Do not move or amplify highlights; do not add or enlarge waves. Do not increase saturation, sharpness, clarity or contrast; do not replace this scene with a different generic underwater photograph. Do not add objects, fish, plants, sea floor, large bubbles or new particles. The only changes are removal of the black side bars and website overlays, and restoration of the specific underwater pixels they obscured. Landscape 16:9.
+
+
 - Asset: `dist/assets/sunset-sky.png`
 - Generated with the built-in image generation tool on 2026-10-24.
 - This is a newly generated photographic sky texture, not a frame copied from the reference video and not a third-party stock image. No third-party license is asserted.

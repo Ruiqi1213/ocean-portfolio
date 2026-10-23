@@ -43,7 +43,7 @@ TIDE 是占位品牌，作品与手记是明确标注的演示内容，尚未替
 
 海浪的波形与解析梯度方法参考 sunset-shader，许可保留在 `dist/vendor-LICENSE.txt`。水面法线来自 Three.js 官方 `examples/textures/waternormals.jpg`，完整归属、MIT 许可和原始来源记录保留在 `dist/THIRD_PARTY_LICENSES.txt`。
 
-生成图片使用内置 imagegen 工具，素材位于 `dist/assets/`；最终提示词和来源见 [SKY_ASSET.md](SKY_ASSET.md)。实际加载 `sunset-sky-light.png` 和 `underwater-light.png`，第一版天空保留作比较。
+图片使用内置 imagegen 工具生成或编辑，素材位于 `dist/assets/`；最终提示词和来源见 [SKY_ASSET.md](SKY_ASSET.md)。实际加载 `sunset-sky-light.png` 和 `underwater-reference-v2.png`。后者根据用户提供的截图去除 UI 与黑边，保留原水下构图和光色，再叠加细微实时折射。旧版素材保留作比较。
 
 ## 检查与限制
 
