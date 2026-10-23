@@ -1,4 +1,7 @@
-/* A self-contained, animated ocean. No images, network requests or dependencies. */
+/* Animated ocean with a local sky photograph and no library dependencies.
+ * Wave-profile / analytical-gradient approach adapted from sunset-shader,
+ * Copyright (c) 2026 Nimesh Mohanakrishnan (MIT). See vendor-LICENSE.txt.
+ */
 const VERTEX = `
 attribute vec2 aPosition;
 void main() { gl_Position = vec4(aPosition, 0.0, 1.0); }
@@ -10,8 +13,17 @@ uniform vec2 uResolution;
 uniform vec2 uPointer;
 uniform float uTime;
 uniform float uProgress;
+uniform sampler2D uSkyTexture;
+uniform float uHasSkyTexture;
+uniform sampler2D uWaterNormals;
+uniform float uHasWaterNormals;
+uniform sampler2D uUnderTexture;
+uniform float uHasUnderTexture;
 
-const vec3 SUN = vec3(0.491, 0.048, -0.870);
+vec3 sunDirection() {
+  return normalize(vec3(.42328 * uResolution.x / uResolution.y, .0572, -1.5));
+}
+#define SUN sunDirection()
 const mat2 TURN = mat2(1.64, 1.18, -1.18, 1.64);
 
 float hash(vec2 p) {
@@ -34,101 +46,194 @@ float fbm(vec2 p) {
   }
   return value;
 }
-float octave(vec2 p, float sharpness) {
-  p += (noise(p) - .5) * .8;
-  vec2 a = 1. - abs(sin(p));
-  vec2 b = abs(cos(p));
-  a = mix(a, b, a);
-  return pow(max(1. - pow(a.x * a.y, .67), .001), sharpness);
+// Physical dispersion gives each wavelength its own speed. The peaked profile
+// produces rounded troughs and steep, translucent crests instead of flat noise.
+vec3 oceanWave(vec2 p, vec2 direction, float wavelength, float amplitude, float phase, float distance) {
+  float k = 6.2831853 / wavelength;
+  float angle = dot(p, direction) * k - uTime * sqrt(9.81 * k) * .76 + phase;
+  float profile = exp(sin(angle) - 1.);
+  float weight = amplitude * exp(-distance * .085 / wavelength);
+  float slope = weight * profile * cos(angle) * k;
+  return vec3(weight * (profile - .4658), slope * direction);
 }
-float sea(vec2 p, bool detailed) {
-  p.x *= .79;
-  float frequency = .20, amplitude = .43, sharpness = 3.4;
-  float height = 0.;
-  float t = uTime * .48;
-  for (int i = 0; i < 5; i++) {
-    if (i == 3 && !detailed) break;
-    float wave = octave((p + vec2(t, t * .62)) * frequency, sharpness);
-    wave += octave((p - vec2(t * .68, t)) * frequency, sharpness);
-    height += wave * amplitude;
-    p = TURN * p;
-    frequency *= 1.83;
-    amplitude *= .225;
-    sharpness = mix(sharpness, 1., .22);
+vec3 waveSpectrum(vec2 p, float distance, bool detailed) {
+  vec3 wave = oceanWave(p, vec2(.24, .971), 26., 1.25, .2, distance);
+  wave += oceanWave(p, vec2(-.37, .929), 15.3, .92, 2.4, distance);
+  wave += oceanWave(p, vec2(.65, .760), 9.1, .46, 5.3, distance);
+  wave += oceanWave(p, vec2(-.79, .613), 5.7, .18, 1.1, distance);
+  wave += oceanWave(p, vec2(.12, .993), 3.25, .070, 3.7, distance);
+  if (detailed) {
+    wave += oceanWave(p, vec2(.88, .475), 1.95, .065, 4.9, distance * .45);
+    wave += oceanWave(p, vec2(-.58, .815), 1.13, .032, 2.8, distance * .45);
+    wave += oceanWave(p, vec2(.44, .898), .61, .014, .9, distance * .35);
+    wave += oceanWave(p, vec2(-.91, .415), .34, .005, 5.7, distance * .30);
   }
-  return height - .72;
+  return wave;
+}
+float sea(vec2 p, bool detailed) { return waveSpectrum(p, 0., detailed).x; }
+vec2 waterDetail(vec2 p, float distance) {
+  if (uHasWaterNormals < .5) return vec2(0.);
+  float t = uTime;
+  vec2 n = (texture2D(uWaterNormals, p * .024 + vec2(t * .006, t * .003)).rg * 2. - 1.) * .32;
+  n += (texture2D(uWaterNormals, p.yx * .041 + vec2(-t * .004, t * .005)).rg * 2. - 1.) * .28;
+  n += (texture2D(uWaterNormals, p * .065 + vec2(t * .002, -t * .004)).rg * 2. - 1.) * .23;
+  n += (texture2D(uWaterNormals, p.yx * .12 + vec2(-t * .006, -t * .002)).rg * 2. - 1.) * .17;
+  return n * 1.15 * exp(-distance * .025);
+}
+vec3 inverseFilmic(vec3 displayLinear) {
+  vec3 a = 2.51 - 2.43 * displayLinear;
+  vec3 b = .03 - .59 * displayLinear;
+  return (-b + sqrt(b * b + .56 * a * displayLinear)) / (2. * a);
 }
 vec3 sky(vec3 ray, bool clouds) {
+  if (uHasSkyTexture > .5) {
+    // Project the photographic sky above the same horizon used by the waves.
+    // The identical environment is reflected by every moving water facet.
+    float projection = max(-ray.z, .12);
+    float aspect = uResolution.x / uResolution.y;
+    vec2 skyUV = vec2(.5 + ray.x / projection / (.9866667 * aspect),
+                      ray.y / projection / .6253333);
+    skyUV = clamp(skyUV, vec2(.001), vec2(.999));
+    vec3 photograph = texture2D(uSkyTexture, skyUV).rgb;
+    // Undo the display curve before lighting, so the final sky retains the
+    // image's natural blue and warm gold instead of being tone-mapped twice.
+    return inverseFilmic(pow(photograph, vec3(2.2)));
+  }
   float altitude = max(ray.y, 0.);
-  float gradient = pow(clamp(altitude * 1.45, 0., 1.), .45);
-  vec3 color = mix(vec3(.92, .81, .65), vec3(.39, .65, .79), gradient);
+  float gradient = pow(clamp(altitude * 1.75, 0., 1.), .47);
+  vec3 color = mix(vec3(.92, .78, .55), vec3(.18, .43, .68), gradient);
   float sun = max(dot(ray, SUN), 0.);
-  color += vec3(1., .53, .20) * pow(sun, 20.) * .20;
-  color += vec3(1., .73, .37) * pow(sun, 180.) * .38;
-  if (clouds && ray.y > -.035) {
+  color += vec3(1., .55, .22) * pow(sun, 28.) * .24;
+  color += vec3(1., .72, .35) * pow(sun, 210.) * .65;
+  if (ray.y > -.035) {
     vec2 p = ray.xz / max(ray.y + .14, .065);
     p = p * vec2(1.3, .74) + vec2(uTime * .004, 4.2);
-    float cloud = fbm(p * 1.55 + fbm(p * .38) * 2.2);
-    float wisps = fbm(p * vec2(.72, 2.7) + 19.);
-    float amount = smoothstep(.43, .70, cloud) * .76;
-    amount += smoothstep(.55, .73, wisps) * .32;
+    float warp = noise(p * .38) * 2.2;
+    float cloud = fbm(p * 1.55 + warp);
+    float wisps = clouds ? fbm(p * vec2(.72, 2.7) + 19.) : .0;
+    float amount = smoothstep(.42, .67, cloud) * .90;
+    amount += smoothstep(.53, .73, wisps) * .33;
     amount *= smoothstep(-.025, .045, ray.y);
-    vec3 cloudColor = mix(vec3(.57, .64, .66), vec3(1., .96, .84),
-                          smoothstep(.41, .65, cloud));
-    cloudColor = mix(cloudColor, vec3(1., .86, .65), pow(sun, 13.) * .58);
+    float sunward = fbm(p * 1.55 + warp + vec2(.11, -.08));
+    float rim = clamp((cloud - sunward) * 6., 0., 1.);
+    vec3 cloudColor = mix(vec3(.23, .32, .40), vec3(1.45, 1.32, 1.10),
+                          smoothstep(.43, .65, cloud) * .75 + rim * .25);
+    cloudColor = mix(cloudColor, vec3(1.45, 1.10, .68), pow(sun, 13.) * .48);
     color = mix(color, cloudColor, clamp(amount, 0., .85));
   }
-  color += vec3(1., .83, .54) * smoothstep(.9995, .99991, sun) * 2.1;
+  color += vec3(1., .80, .47) * smoothstep(.99970, .99994, sun) * 8.;
   return color;
+}
+vec3 reflectedSky(vec3 direction, float distance) {
+  // A small reflection cone represents unresolved capillary waves. Unlike an
+  // ideal mirror this keeps cloud edges soft and eliminates metallic contours.
+  float blur = mix(.022, .070, 1. - exp(-distance * .025));
+  vec3 reflected = min(sky(direction, false), vec3(1.6)) * .34;
+  reflected += min(sky(normalize(direction + vec3(blur, blur * .4, 0.)), false), vec3(1.6)) * .22;
+  reflected += min(sky(normalize(direction + vec3(-blur, blur * .4, 0.)), false), vec3(1.6)) * .22;
+  reflected += min(sky(normalize(direction + vec3(0., blur, .01)), false), vec3(1.6)) * .22;
+  float brightness = dot(reflected, vec3(.2126, .7152, .0722));
+  return mix(vec3(brightness), reflected, .68) * .60;
 }
 float intersect(vec3 origin, vec3 ray) {
   float nearT = 0., farT = 1300.;
   float nearH = origin.y - sea(origin.xz, false);
-  float farH = (origin + ray * farT).y - sea((origin + ray * farT).xz, false);
+  float farH = (origin + ray * farT).y - waveSpectrum((origin + ray * farT).xz, farT, false).x;
   if (farH > 0.) return farT;
   float midT = 0.;
   for (int i = 0; i < 8; i++) {
     midT = mix(nearT, farT, clamp(nearH / (nearH - farH), .02, .98));
     vec3 p = origin + ray * midT;
-    float h = p.y - sea(p.xz, false);
+    float h = p.y - waveSpectrum(p.xz, midT, false).x;
     if (h < 0.) { farT = midT; farH = h; }
     else { nearT = midT; nearH = h; }
   }
   return midT;
 }
 vec3 aboveWater(vec2 uv, float progress) {
-  float descent = smoothstep(0., .50, progress);
-  float tilt = mix(.198, .11, descent);
+  float descent = smoothstep(.08, .82, progress);
+  float tilt = mix(.198, .11, descent) + sin(uTime * .63) * .006;
   vec3 ray = normalize(vec3(uv.x * .74 + uPointer.x * .018,
                             uv.y * .74 + tilt + uPointer.y * .008, -1.5));
   if (ray.y > -.0012) return sky(ray, true);
-  vec3 origin = vec3(uPointer.x * .12, mix(1.34, .55, descent), 4.8 + uTime * .10);
+  vec3 origin = vec3(uPointer.x * .12, mix(1.58, .95, descent) + sin(uTime * .76) * .075, 4.8);
   float distance = intersect(origin, ray);
   vec3 p = origin + ray * distance;
-  float epsilon = max(.012, distance * .00075);
-  float h = sea(p.xz, true);
-  vec3 normal = normalize(vec3(h - sea(p.xz + vec2(epsilon, 0.), true),
-                               epsilon, h - sea(p.xz + vec2(0., epsilon), true)));
+  vec3 spectrum = waveSpectrum(p.xz, distance, true);
+  float h = spectrum.x;
+  vec2 gradient = spectrum.yz;
+  // Four drifting layers of the licensed water material add fine ripples.
+  // Mipmaps and distance attenuation prevent glittering noise at the horizon.
+  gradient += waterDetail(p.xz, distance);
+  vec3 normal = normalize(vec3(-gradient.x, 1., -gradient.y));
   vec3 reflected = reflect(ray, normal);
   reflected.y = max(reflected.y, .008);
   float facing = clamp(dot(normal, -ray), 0., 1.);
-  float fresnel = .045 + .955 * pow(1. - facing, 4.4);
-  vec3 reflection = sky(normalize(reflected), false);
-  vec3 deep = vec3(.006, .065, .095);
+  float fresnel = .0204 + .9796 * pow(1. - facing, 5.);
+  vec3 reflection = reflectedSky(normalize(reflected), distance);
+  vec3 deep = vec3(.0025, .028, .044);
   float light = max(dot(normal, SUN), 0.);
-  vec3 water = deep + vec3(.018, .15, .17) * light * .65;
-  water += vec3(.03, .16, .17) * max(h + .30, 0.) * (1. - facing) * .8;
-  vec3 color = mix(water, reflection, fresnel);
-  float sparkle = max(dot(reflected, SUN), 0.);
-  color += vec3(1., .77, .43) * (pow(sparkle, 90.) * .60 + pow(sparkle, 580.) * 5.0);
-  float crest = smoothstep(.27, .48, h) * smoothstep(.42, .82, noise(p.xz * 4.));
-  color += vec3(.15, .21, .22) * crest * .11;
-  color = mix(color, vec3(.58, .66, .66), 1. - exp(-distance * .0007));
-  float horizon = smoothstep(-.035, -.001, ray.y);
-  return mix(color, sky(ray, false) * .78, horizon * .25);
+  vec3 water = deep + vec3(.006, .10, .135) * light * .55;
+  float crest = smoothstep(-.20, .75, h);
+  float throughCrest = crest * (.35 + .65 * pow(max(dot(ray, SUN), 0.), 3.));
+  water += vec3(.015, .20, .19) * throughCrest * (1. - fresnel) * .85;
+  vec3 color = mix(water, reflection, fresnel * .84);
+  vec3 halfway = normalize(SUN - ray);
+  float sparkle = max(dot(normal, halfway), 0.);
+  float shininess = mix(35., 480., exp(-distance * .025));
+  float glint = pow(sparkle, shininess) * (shininess + 2.) / 25.1327;
+  float glintFresnel = .0204 + .9796 * pow(1. - max(dot(halfway, -ray), 0.), 5.);
+  color += vec3(1., .79, .45) * glint * glintFresnel * .55;
+  float foam = smoothstep(.82, 1.24, h) * smoothstep(.53, .8, noise(p.xz * 7.));
+  color = mix(color, vec3(.75, .88, .88), foam * .20);
+  color = mix(color, sky(normalize(vec3(ray.x, .004, ray.z)), false) * .65,
+              1. - exp(-distance * .00045));
+  return color;
+}
+
+vec3 underwaterPhotograph(vec2 st, float progress) {
+  float depth = smoothstep(.20, 1., progress);
+  float upper = smoothstep(.16, .93, st.y);
+  vec2 coordinates = (st - .5) / mix(1.055, 1., depth) + .5;
+  coordinates.y += (1. - depth) * .025;
+  // Broad surface swells and small irregular refraction both travel over time.
+  vec2 swell = vec2(sin(st.y * 11. + uTime * .43) + sin(st.x * 9. - uTime * .31) * .45,
+                    cos(st.x * 13. + uTime * .36) + sin(st.y * 17. - uTime * .27) * .4);
+  coordinates += swell * vec2(.0026, .0037) * upper;
+  coordinates += waterDetail(st * vec2(28., 19.) + vec2(uTime * .16, 0.), 0.) * .022 * upper;
+  coordinates += uPointer * vec2(.004, .003) * upper;
+  vec3 photo = texture2D(uUnderTexture, clamp(coordinates, .003, .997)).rgb;
+  vec3 color = inverseFilmic(pow(photo, vec3(2.2)));
+  color *= mix(vec3(1.), vec3(.94, .985, 1.), depth);
+  float sunlight = exp(-pow((st.x - .79) * 4., 2.) - pow((st.y - .85) * 3.5, 2.));
+  color *= 1. + sunlight * (.026 * sin(uTime * .47) + .018 * sin(uTime * .81 + st.y * 7.));
+
+  // Tiny air bubbles rise at different speeds. The offset rim highlight and
+  // faint core distinguish them from opaque white dots or a particle overlay.
+  for (int i = 0; i < 3; i++) {
+    float layer = float(i);
+    float spacing = 86. + layer * 31.;
+    vec2 cells = gl_FragCoord.xy / spacing;
+    cells.y -= uTime * (.072 + layer * .031);
+    cells.x += sin(uTime * .16 + layer * 2.) * .08;
+    vec2 id = floor(cells);
+    float seed = hash(id + layer * 71.);
+    vec2 center = vec2(.22 + hash(id + 3.) * .56, .20 + hash(id + 13.) * .60);
+    vec2 delta = (fract(cells) - center) * spacing;
+    float radius = mix(.62, 1.65, hash(id + 41.)) * (1. - layer * .12);
+    float d = length(delta);
+    float softness = .38 + layer * .20;
+    float rim = exp(-pow((d - radius) / softness, 2.));
+    float highlight = exp(-dot(delta - vec2(-radius * .34, radius * .40),
+                               delta - vec2(-radius * .34, radius * .40)) / (.20 + radius * .22));
+    float visible = step(.88, seed) * (.16 + .12 * sin(seed * 12. + uTime * .7));
+    color += vec3(.25, .53, .61) * (rim * .24 + highlight * .62) * visible;
+  }
+  return color;
 }
 
 vec3 underwater(vec2 st, vec2 uv, float progress) {
+  if (uHasUnderTexture > .5) return underwaterPhotograph(st, progress);
   float depth = smoothstep(.28, 1., progress);
   vec3 color = mix(vec3(.003, .035, .064), vec3(.018, .22, .28), pow(st.y, 1.40));
   vec2 lightPos = vec2(.78 + uPointer.x * .007, 1.04);
@@ -179,11 +284,11 @@ void main() {
   vec2 st = gl_FragCoord.xy / uResolution;
   vec2 uv = (gl_FragCoord.xy * 2. - uResolution) / uResolution.y;
   float progress = clamp(uProgress, 0., 1.);
-  float crossing = smoothstep(.22, .72, progress);
+  float crossing = smoothstep(.12, .90, progress);
   float wave = sin(st.x * 13. + uTime * .9) * .014
              + sin(st.x * 31. - uTime * .63) * .006;
-  float waterline = mix(-.10, 1.13, crossing) + wave * sin(crossing * 3.14159);
-  float submerged = 1. - smoothstep(waterline - .016, waterline + .016, st.y);
+  float waterline = mix(-.13, 1.15, crossing) + wave * sin(crossing * 3.14159);
+  float submerged = 1. - smoothstep(waterline - .025, waterline + .025, st.y);
   vec3 color;
   if (submerged < .001) {
     color = aboveWater(uv, progress);
@@ -195,9 +300,11 @@ void main() {
     color = mix(aboveWater(distorted, progress), underwater(st, uv, progress), submerged);
     color += vec3(.12, .25, .25) * exp(-abs(st.y - waterline) * 340.) * .65;
   }
-  // Gentle film response preserves bright sunset glints without clipping the sky.
-  color = 1. - exp(-color * 1.18);
-  color = pow(max(color, .0), vec3(.83));
+  // Linear lighting is displayed through a filmic curve followed by sRGB gamma.
+  // Keeping this order preserves bright cloud reflections and clear blue water.
+  color = max(color, vec3(0.));
+  color = clamp((color * (2.51 * color + .03)) / (color * (2.43 * color + .59) + .14), 0., 1.);
+  color = pow(color, vec3(1. / 2.2));
   float vignette = 1. - .10 * dot(st - .5, st - .5);
   color *= vignette;
   color += (hash(gl_FragCoord.xy + fract(uTime) * 73.) - .5) / 255.;
@@ -278,6 +385,84 @@ export class OceanScene {
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
     this.uniforms = Object.fromEntries(['uResolution', 'uPointer', 'uTime', 'uProgress']
       .map(name => [name, gl.getUniformLocation(program, name)]));
+    this.uniforms.uSkyTexture = gl.getUniformLocation(program, 'uSkyTexture');
+    this.uniforms.uHasSkyTexture = gl.getUniformLocation(program, 'uHasSkyTexture');
+    this.skyTexture = gl.createTexture();
+    this.hasSkyTexture = false;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.skyTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+      new Uint8Array([145, 185, 213, 255]));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    const skyImage = new Image();
+    this.skyImage = skyImage;
+    skyImage.onload = () => {
+      if (this.destroyed || this.contextLost) return;
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.skyTexture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, skyImage);
+      this.hasSkyTexture = true;
+      this.canvas.dataset.oceanSky = 'photographic';
+      this.requestFrame();
+    };
+    skyImage.src = new URL('./assets/sunset-sky-light.png', import.meta.url).href;
+    this.uniforms.uWaterNormals = gl.getUniformLocation(program, 'uWaterNormals');
+    this.uniforms.uHasWaterNormals = gl.getUniformLocation(program, 'uHasWaterNormals');
+    this.waterNormals = gl.createTexture();
+    this.hasWaterNormals = false;
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.waterNormals);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+      new Uint8Array([128, 128, 255, 255]));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    const normalsImage = new Image();
+    this.normalsImage = normalsImage;
+    normalsImage.onload = () => {
+      if (this.destroyed || this.contextLost) return;
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.waterNormals);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      // Normal vectors are data, deliberately sampled without sRGB conversion.
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, normalsImage);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      this.hasWaterNormals = true;
+      this.canvas.dataset.oceanMaterial = 'waternormals';
+      this.requestFrame();
+    };
+    normalsImage.src = new URL('./assets/waternormals.jpg', import.meta.url).href;
+    this.uniforms.uUnderTexture = gl.getUniformLocation(program, 'uUnderTexture');
+    this.uniforms.uHasUnderTexture = gl.getUniformLocation(program, 'uHasUnderTexture');
+    this.underTexture = gl.createTexture();
+    this.hasUnderTexture = false;
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.underTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+      new Uint8Array([8, 65, 88, 255]));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    const underImage = new Image();
+    this.underImage = underImage;
+    underImage.onload = () => {
+      if (this.destroyed || this.contextLost) return;
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, this.underTexture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, underImage);
+      this.hasUnderTexture = true;
+      this.canvas.dataset.oceanUnderwater = 'photographic';
+      this.requestFrame();
+    };
+    underImage.src = new URL('./assets/underwater-light.png', import.meta.url).href;
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
   }
@@ -348,6 +533,18 @@ export class OceanScene {
     gl.uniform2f(this.uniforms.uPointer, this.pointer[0], this.pointer[1]);
     gl.uniform1f(this.uniforms.uTime, this.time);
     gl.uniform1f(this.uniforms.uProgress, this.progress);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.skyTexture);
+    gl.uniform1i(this.uniforms.uSkyTexture, 0);
+    gl.uniform1f(this.uniforms.uHasSkyTexture, this.hasSkyTexture ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.waterNormals);
+    gl.uniform1i(this.uniforms.uWaterNormals, 1);
+    gl.uniform1f(this.uniforms.uHasWaterNormals, this.hasWaterNormals ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.underTexture);
+    gl.uniform1i(this.uniforms.uUnderTexture, 2);
+    gl.uniform1f(this.uniforms.uHasUnderTexture, this.hasUnderTexture ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     if (elapsed > .043 && !this.paused) this.slowFrames++;
     else this.slowFrames = Math.max(0, this.slowFrames - 1);
@@ -372,6 +569,9 @@ export class OceanScene {
     if (this.gl && !this.contextLost) {
       this.gl.deleteBuffer(this.buffer);
       this.gl.deleteProgram(this.program);
+      this.gl.deleteTexture(this.skyTexture);
+      this.gl.deleteTexture(this.waterNormals);
+      this.gl.deleteTexture(this.underTexture);
     }
   }
 }
