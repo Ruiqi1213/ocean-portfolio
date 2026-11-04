@@ -193,53 +193,26 @@ vec3 aboveWater(vec2 uv, float progress) {
 
 vec3 underwaterPhotograph(vec2 st, float progress) {
   float depth = smoothstep(.20, 1., progress);
+  float upper = smoothstep(.30, .88, st.y);
   vec2 coordinates = (st - .5) / mix(1.012, 1., depth) + .5;
   coordinates.y += (1. - depth) * .008;
+  // Preserve the reference camera and ripple scale, with only a few pixels
+  // of refraction near the surface instead of stretching whole wave ridges.
+  vec2 swell = vec2(sin(st.y * 11. + uTime * .43) + sin(st.x * 9. - uTime * .31) * .45,
+                    cos(st.x * 13. + uTime * .36) + sin(st.y * 17. - uTime * .27) * .4);
+  coordinates += swell * vec2(1.8, 2.3) / uResolution * upper;
+  coordinates += waterDetail(st * vec2(28., 19.) + vec2(uTime * .10, 0.), 0.) * .007 * upper;
+  coordinates += uPointer * vec2(.0015, .0010) * upper;
   // Cover-fit the 16:9 photograph without squeezing its waves on tall screens.
   float viewportAspect = uResolution.x / uResolution.y;
   float photoAspect = 1672. / 941.;
   vec2 crop = vec2(min(1., viewportAspect / photoAspect), min(1., photoAspect / viewportAspect));
   float horizontalFocus = mix(.70, .5, smoothstep(.65, 1.30, viewportAspect));
   coordinates = (coordinates - .5) * crop + vec2(horizontalFocus, .5);
-
-  // Refraction is anchored in the water's own coordinates. Independent bands
-  // keep the ceiling moving while the camera and the open water remain steady.
-  vec2 waterPosition = coordinates * vec2(photoAspect, 1.);
-  float upper = smoothstep(.28, .88, coordinates.y);
-  float waveA = dot(waterPosition, vec2(19., 8.)) - uTime * .72;
-  float waveB = dot(waterPosition, vec2(-13., 22.)) + uTime * .58;
-  float waveC = dot(waterPosition, vec2(39., -29.)) - uTime * 1.08;
-  vec2 swell = vec2(sin(waveA) * .0023 + sin(waveB) * .0013,
-                    cos(waveB) * .0031 + sin(waveC) * .0012);
-  vec2 fineRefraction = waterDetail(waterPosition * vec2(34., 29.)
-                       + vec2(uTime * .14, -uTime * .20), 0.) * .018;
-  coordinates += (swell + fineRefraction) * upper;
-  coordinates += uPointer * vec2(.0015, .0010) * upper;
   vec3 photo = texture2D(uUnderTexture, clamp(coordinates, .003, .997)).rgb;
   vec3 color = inverseFilmic(pow(photo, vec3(2.2)));
-
-  // Local moving caustics follow the ripple bands; this does not pulse the
-  // exposure of the entire photograph or shift its original color balance.
-  float surfaceLight = .080 * sin(waveA + sin(waveB) * .45)
-                     + .045 * sin(waveC + .7);
-  float highlightMask = .35 + .65 * smoothstep(.20, .72, dot(photo, vec3(.2126, .7152, .0722)));
-  color *= 1. + surfaceLight * upper * highlightMask;
-
-  // Broad, independently drifting shafts simulate sunlight scattered through
-  // the water. Their varying widths and soft falloff avoid regular laser lines.
-  vec2 fromSun = vec2((coordinates.x - .79) * photoAspect, .91 - coordinates.y);
-  float shaftAngle = atan(fromSun.x, max(fromSun.y, .08));
-  float shaftA = exp(-pow((shaftAngle + .48 + .055 * sin(uTime * .24)) / .19, 2.));
-  float shaftB = exp(-pow((shaftAngle + .13 - .045 * sin(uTime * .31 + 1.7)) / .125, 2.));
-  float shaftC = exp(-pow((shaftAngle - .23 + .065 * sin(uTime * .19 + 3.2)) / .22, 2.));
-  float shafts = shaftA * (.56 + .22 * sin(uTime * .37 + .8))
-               + shaftB * (.65 + .26 * sin(uTime * .43 + 2.4))
-               + shaftC * (.38 + .17 * sin(uTime * .29 + 4.1));
-  float depthFade = (1. - smoothstep(.66, .91, coordinates.y))
-                  * exp(-max(.73 - coordinates.y, 0.) * 2.6);
-  float shaftDapple = .70 + .30 * noise(vec2(shaftAngle * 8. + uTime * .11,
-                                             coordinates.y * 3. - uTime * .13));
-  color += vec3(.020, .054, .052) * shafts * depthFade * shaftDapple;
+  float sunlight = exp(-pow((coordinates.x - .80) * 4., 2.) - pow((coordinates.y - .75) * 3.5, 2.));
+  color *= 1. + sunlight * (.012 * sin(uTime * .47) + .008 * sin(uTime * .81 + st.y * 7.));
 
   // Tiny air bubbles rise at different speeds. The offset rim highlight and
   // faint core distinguish them from opaque white dots or a particle overlay.
@@ -247,7 +220,7 @@ vec3 underwaterPhotograph(vec2 st, float progress) {
     float layer = float(i);
     float spacing = 86. + layer * 31.;
     vec2 cells = gl_FragCoord.xy / spacing;
-    cells.y -= uTime * (.13 / (1. + layer * .70));
+    cells.y -= uTime * (.072 + layer * .031);
     cells.x += sin(uTime * .16 + layer * 2.) * .08;
     vec2 id = floor(cells);
     float seed = hash(id + layer * 71.);
@@ -259,7 +232,7 @@ vec3 underwaterPhotograph(vec2 st, float progress) {
     float rim = exp(-pow((d - radius) / softness, 2.));
     float highlight = exp(-dot(delta - vec2(-radius * .34, radius * .40),
                                delta - vec2(-radius * .34, radius * .40)) / (.20 + radius * .22));
-    float visible = step(.91, seed) * (.14 + .05 * sin(seed * 12. + uTime * .7));
+    float visible = step(.92, seed) * (.10 + .06 * sin(seed * 12. + uTime * .7));
     color += vec3(.25, .53, .61) * (rim * .24 + highlight * .62) * visible;
   }
   return color;
@@ -553,12 +526,9 @@ export class OceanScene {
   render(now) {
     this.frame = 0;
     if (this.destroyed || this.contextLost || document.hidden) return;
-    const wallElapsed = this.last ? Math.max(0, (now - this.last) / 1000) : 1 / 60;
-    const elapsed = Math.min(wallElapsed, .1);
+    const elapsed = this.last ? Math.min((now - this.last) / 1000, .1) : 1 / 60;
     this.last = now;
-    // Wave speed follows real time even when a device renders fewer frames.
-    // Camera easing remains capped; visibility and pause changes reset `last`.
-    if (!this.paused && !this.reducedMotion) this.time += wallElapsed;
+    if (!this.paused && !this.reducedMotion) this.time += elapsed;
     const easing = 1 - Math.exp(-elapsed * 8);
     this.progress += (this.targetProgress - this.progress) * easing;
     this.pointer[0] += (this.targetPointer[0] - this.pointer[0]) * easing;
