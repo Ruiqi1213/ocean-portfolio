@@ -13,6 +13,9 @@ let framePending = false;
 let currentProgress = 0;
 const depthNumber = document.querySelector('#depth-number');
 const depthLabel = document.querySelector('.depth-label');
+const siteHeader = document.querySelector('.site-header');
+const sectionLinks = [...siteHeader.querySelectorAll('a[href^="#"]')].filter(link => link.hash !== '#home');
+const contentSections = [...document.querySelectorAll('main > .section')];
 
 function syncScroll() {
   framePending = false;
@@ -22,6 +25,16 @@ function syncScroll() {
   root.style.setProperty('--dive', currentProgress.toFixed(4));
   root.style.setProperty('--reading', Math.max(0, Math.min(1, (y - max) / (innerHeight * .8))).toFixed(4));
   root.style.setProperty('--depth', Math.min(1, y / Math.max(1, document.documentElement.scrollHeight - innerHeight)).toFixed(4));
+  const reading = y > max + innerHeight * .35;
+  siteHeader.classList.toggle('is-reading', reading);
+  let activeSection = '';
+  for (const section of contentSections) {
+    if (section.offsetTop <= y + innerHeight * .3) activeSection = '#' + section.id;
+  }
+  sectionLinks.forEach(link => {
+    if (reading && link.hash === activeSection) link.setAttribute('aria-current', 'location');
+    else link.removeAttribute('aria-current');
+  });
   if (motionPreference.matches && paused) scene.progress = currentProgress;
   scene.setProgress(currentProgress);
   depthNumber.textContent = String(Math.min(999, Math.round(y / innerHeight * 12))).padStart(3, '0');
@@ -99,8 +112,8 @@ document.addEventListener('visibilitychange', () => {
 });
 
 const projects = {
-  zhiyu:{kicker:'01 / AI PRODUCT · 2026.07 — 08',title:'至语 · AI 科研工作台',description:'在「至语 · 军工科研论证 AI 一体机」项目中担任 AI 产品实习生，设计“论证树大纲 → 知识召回 → 分章生成 → 引用溯源”的写作流程。完成 10 余款模型选型与效果评测，推动写作、绘图、原型和 PPT 四个模块上线。',tags:['AI 写作','RAG / 知识库','模型评测']},
-  resume:{kicker:'02 / INDEPENDENT PROJECT · 2026.09',title:'JD × 简历智能助手',description:'独立开发并上线的求职工具。用户上传简历与岗位 JD 后，AI 通过追问帮助补全缺失经历，并生成定制招呼语，方便针对不同岗位准备求职材料，逐步形成个人简历管理体系。',tags:['独立开发','AI 应用','求职工具'],url:'https://github.com/Ruiqi1213/jd-resume-assistant'}
+  zhiyu:{kicker:'01 / AI 产品实习生 · 2026.07 — 08',title:'至语 · AI 科研工作台',description:'在行至智能参与「至语 · 军工科研论证 AI 一体机」，面向科研场景设计 AI 写作产品。',sections:[['场景问题','科研资料分散、知识难以复用，长文生成需要同时兼顾章节连贯与引用依据。'],['我的工作','设计论证树大纲、知识召回、分章生成和引用溯源流程；用大纲组织章节逻辑，让生成内容关联知识库与来源。'],['评测与交付','完成 10 余款模型选型与效果评测，推动写作、绘图、原型和 PPT 四个模块上线。']],tags:['AI 写作','RAG / 知识库','模型评测']},
+  resume:{kicker:'02 / 独立开发 · 2026.09',title:'JD × 简历智能助手',description:'独立开发并上线的 AI 求职工具，帮助求职者面向不同岗位整理经历。',sections:[['使用场景','求职者投递不同类型岗位时，需要结合岗位 JD 补充和组织自己的经历。'],['我的工作','设计并开发简历与 JD 输入、AI 追问补全经历、定制招呼语生成的流程。'],['交付与查看','工具已独立开发并上线。可通过下方 GitHub 链接查看项目，进一步了解实现。']],tags:['独立开发','AI 应用','求职工具'],url:'https://github.com/Ruiqi1213/jd-resume-assistant'}
 };
 const projectDialog = document.querySelector('#project-dialog');
 const dialogOpeners = new WeakMap();
@@ -117,7 +130,13 @@ document.querySelectorAll('[data-project]').forEach(button=>button.addEventListe
   document.querySelector('#dialog-kicker').textContent=item.kicker;
   document.querySelector('#dialog-title').textContent=item.title;
   document.querySelector('#dialog-description').textContent=item.description;
-  document.querySelector('#dialog-art').replaceChildren(button.querySelector('.project-art').cloneNode(true));
+  document.querySelector('#dialog-art').replaceChildren(button.closest('.case-card').querySelector('.project-art').cloneNode(true));
+  document.querySelector('#dialog-sections').replaceChildren(...item.sections.map(([heading, text]) => {
+    const group = document.createElement('div');
+    const label = document.createElement('dt');label.textContent = heading;
+    const content = document.createElement('dd');content.textContent = text;
+    group.append(label, content);return group;
+  }));
   document.querySelector('#dialog-tags').replaceChildren(...item.tags.map(text=>{const span=document.createElement('span');span.textContent=text;return span;}));
   const projectLink = document.querySelector('#dialog-project-link');
   projectLink.hidden = !item.url;
@@ -143,6 +162,17 @@ document.querySelector('.dialog-done').addEventListener('click',()=>closeDialog(
 document.querySelector('#hello').href = `mailto:${profile.email}?subject=${encodeURIComponent(`你好，${profile.name}`)}`;
 document.querySelector('#contact-address').textContent = profile.email;
 document.querySelector('#github-link').href = profile.github;
+document.querySelector('#copy-email').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(profile.email);
+    toast('邮箱已复制');
+  } catch {
+    const selection = window.getSelection();
+    const range = document.createRange();range.selectNodeContents(document.querySelector('#contact-address'));
+    selection.removeAllRanges();selection.addRange(range);
+    toast('已选中邮箱，可按 Ctrl+C 或长按复制');
+  }
+});
 let toastTimer;
 function toast(message){const el=document.querySelector('#toast');el.textContent=message;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3500);}
 window.addEventListener('pagehide',()=>scene.setPaused(true));
