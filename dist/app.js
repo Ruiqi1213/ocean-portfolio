@@ -37,26 +37,6 @@ addEventListener('resize', syncScroll, {passive:true});
 addEventListener('pointermove', e => {
   if (!paused) scene.setPointer((e.clientX / innerWidth - .5) * 2, (e.clientY / innerHeight - .5) * 2);
 }, {passive:true});
-let diveAnimation = 0;
-function stopDiveAnimation() { cancelAnimationFrame(diveAnimation); diveAnimation = 0; }
-addEventListener('wheel', stopDiveAnimation, {passive:true});
-addEventListener('touchstart', stopDiveAnimation, {passive:true});
-addEventListener('keydown', event => {if(['ArrowDown','ArrowUp','PageDown','PageUp','Home','End','Escape',' '].includes(event.key))stopDiveAnimation();});
-document.querySelector('#dive').addEventListener('click', () => {
-  stopDiveAnimation();
-  const from = scrollY, to = track.offsetHeight - hero.offsetHeight;
-  if (motionPreference.matches) {scrollTo({top:to,behavior:'instant'});return;}
-  const started = performance.now();
-  const step = now => {
-    const p = Math.min(1, (now - started) / 3400);
-    const eased = p * p * (3 - 2 * p);
-    scrollTo({top:from + (to - from) * eased,behavior:'instant'});
-    if(p < 1) diveAnimation = requestAnimationFrame(step);
-    else diveAnimation = 0;
-  };
-  diveAnimation = requestAnimationFrame(step);
-});
-
 function updateMotion() {
   // An explicit play action may override the initial system preference.
   scene.reducedMotion = paused;
