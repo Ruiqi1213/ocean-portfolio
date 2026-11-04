@@ -20,6 +20,7 @@ function syncScroll() {
   const max = Math.max(1, track.offsetHeight - hero.offsetHeight);
   currentProgress = Math.max(0, Math.min(1, y / max));
   root.style.setProperty('--dive', currentProgress.toFixed(4));
+  root.style.setProperty('--reading', Math.max(0, Math.min(1, (y - max) / (innerHeight * .8))).toFixed(4));
   root.style.setProperty('--depth', Math.min(1, y / Math.max(1, document.documentElement.scrollHeight - innerHeight)).toFixed(4));
   if (motionPreference.matches && paused) scene.progress = currentProgress;
   scene.setProgress(currentProgress);
@@ -118,8 +119,8 @@ document.addEventListener('visibilitychange', () => {
 });
 
 const projects = {
-  tide:{kicker:'01 / INTERACTIVE EXPERIENCE',title:'TIDE · 沉浸式个人空间',description:'把一次浏览变成一段缓慢的下潜。海浪由实时渲染生成，镜头跟随滚动从日落海面进入深蓝水下；文字、光线和内容随着深度逐渐展开。这是一个关于数字空间与情绪的概念练习，也是你正在浏览的这个首页。',tags:['交互设计','实时海面','滚动叙事']},
-  still:{kicker:'02 / VISUAL EXPLORATION',title:'STILL · 日常观察',description:'以光、几何和材质为线索，寻找日常里的片刻安静。一束光的移动、一面墙的阴影，都可以成为视觉语言的起点。这组概念画面探索克制的配色、空间关系与留白。',tags:['视觉实验','光影构成','色彩研究']}
+  zhiyu:{kicker:'01 / AI PRODUCT · 2026.07 — 08',title:'至语 · AI 科研工作台',description:'在「至语 · 军工科研论证 AI 一体机」项目中担任 AI 产品实习生，设计“论证树大纲 → 知识召回 → 分章生成 → 引用溯源”的写作流程。完成 10 余款模型选型与效果评测，推动写作、绘图、原型和 PPT 四个模块上线。',tags:['AI 写作','RAG / 知识库','模型评测']},
+  resume:{kicker:'02 / INDEPENDENT PROJECT · 2026.09',title:'JD × 简历智能助手',description:'独立开发并上线的求职工具。用户上传简历与岗位 JD 后，AI 通过追问帮助补全缺失经历，并生成定制招呼语，方便针对不同岗位准备求职材料，逐步形成个人简历管理体系。',tags:['独立开发','AI 应用','求职工具'],url:'https://github.com/Ruiqi1213/jd-resume-assistant'}
 };
 const projectDialog = document.querySelector('#project-dialog');
 const dialogOpeners = new WeakMap();
@@ -138,6 +139,10 @@ document.querySelectorAll('[data-project]').forEach(button=>button.addEventListe
   document.querySelector('#dialog-description').textContent=item.description;
   document.querySelector('#dialog-art').replaceChildren(button.querySelector('.project-art').cloneNode(true));
   document.querySelector('#dialog-tags').replaceChildren(...item.tags.map(text=>{const span=document.createElement('span');span.textContent=text;return span;}));
+  const projectLink = document.querySelector('#dialog-project-link');
+  projectLink.hidden = !item.url;
+  if (item.url) projectLink.href = item.url;
+  else projectLink.removeAttribute('href');
   openDialog(projectDialog,button);
 }));
 document.querySelectorAll('dialog').forEach(dialog=>{
@@ -155,20 +160,9 @@ document.querySelectorAll('dialog').forEach(dialog=>{
   });
 });
 document.querySelector('.dialog-done').addEventListener('click',()=>closeDialog(projectDialog));
-let savedEmail='';try{savedEmail=localStorage.getItem('tide-contact-email')||'';}catch{}
-document.querySelector('#hello').addEventListener('click',e=>{
-  const email=profile.email||savedEmail;
-  if(email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){location.href=`mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('你好，TIDE')}`;}
-  else {
-    document.querySelector('#contact-email').value = savedEmail;
-    openDialog(document.querySelector('#hello-dialog'),e.currentTarget);
-  }
-});
-document.querySelector('#email-form').addEventListener('submit',e=>{
-  e.preventDefault();savedEmail=document.querySelector('#contact-email').value.trim();
-  try{localStorage.setItem('tide-contact-email',savedEmail);toast('邮箱已保存到当前浏览器');}catch{toast('邮箱已在本次访问中生效');}
-  closeDialog(document.querySelector('#hello-dialog'));
-});
+document.querySelector('#hello').href = `mailto:${profile.email}?subject=${encodeURIComponent(`你好，${profile.name}`)}`;
+document.querySelector('#contact-address').textContent = profile.email;
+document.querySelector('#github-link').href = profile.github;
 let toastTimer;
 function toast(message){const el=document.querySelector('#toast');el.textContent=message;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3500);}
 window.addEventListener('pagehide',()=>scene.setPaused(true));

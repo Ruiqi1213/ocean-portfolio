@@ -1,7 +1,7 @@
-// Replace these values with your own identity and public contact email.
-// Leave email empty to keep the setup card. No message is sent by this site.
+// Public identity and contact details supplied in the owner's resume.
 export const profile = {
-  name: 'TIDE',
-  email: '',
-  title: '我的创意海域',
+  name: '王瑞琪',
+  email: 'ruiqi1213@foxmail.com',
+  title: 'AI 产品设计与落地',
+  github: 'https://github.com/Ruiqi1213',
 };
